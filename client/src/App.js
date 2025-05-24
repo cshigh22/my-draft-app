@@ -86,7 +86,10 @@ export default function App() {
 
   // Socket.io event handlers
   useEffect(() => {
-    socket.on('updateLobby', list => setPlayerList(list));
+    socket.on('updateLobby', list => {
+      console.log('📝 Lobby:', list);
+      setPlayerList(list);
+    });
 
     socket.on('draftStarted', ({ draftOrderSocketIds, draftOrderNicknames, playersPool }) => {
       setDraftStarted(true);
@@ -122,11 +125,24 @@ export default function App() {
   }, []);
 
   // Join room
+  // AFTER
   const joinRoom = () => {
     if (!roomCode || !nickname) return;
-    socket.emit('joinRoom', { code: roomCode, nickname });
-    setJoined(true);
+    console.log('➤ joinRoom()', roomCode.toUpperCase(), nickname);
+    socket.emit(
+      'joinRoom',
+      { code: roomCode.toUpperCase(), nickname },
+      ({ success, error }) => {
+        console.log('⬅️ joinRoom callback', success, error);
+        if (success) {
+          setJoined(true);
+        } else {
+          alert(error);
+        }
+      }
+    );
   };
+
 
   // Begin manual assignment
   const startAssignment = () => {

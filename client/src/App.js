@@ -29,11 +29,7 @@ import {
 } from '@mui/material';
 
 // initialize socket to your deployed Railway backend
-const SOCKET_HOST = 'wss://switchyard.proxy.rlwy.net:55917'
-const socket      = io(SOCKET_HOST, {
-  transports: ['websocket'],   // force true WebSockets
-  path: '/socket.io'           // default, but explicit can't hurt
-})
+const socket = io('https://my-draft-app-production.up.railway.app');
 
 const theme = createTheme({ palette: { mode: 'light' } });
 

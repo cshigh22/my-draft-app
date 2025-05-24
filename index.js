@@ -28,6 +28,7 @@ mongoose
 const roomSchema = new mongoose.Schema({
   code:                { type: String, unique: true },
   players:             [{ id: String, nickname: String }],
+  maxPlayers:          { type: Number, default: 6 },    
   draftOrderNicknames: [String],
   draftOrderSocketIds: [String],
   picks:               [mongoose.Schema.Types.Mixed],
@@ -72,7 +73,7 @@ io.on('connection', socket => {
       const roomCode = code.toUpperCase();
       let room = await Room.findOne({ code: roomCode });
       if (!room) {
-        room = await Room.create({ code: roomCode, players: [] });
+        room = await Room.create({ code: roomCode, players: [], maxPlayers: maxPlayers ?? undefined});
       }
 
       // Re‑bind existing nickname or add new one

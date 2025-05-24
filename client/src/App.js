@@ -30,8 +30,9 @@ import {
 const socket = io('https://my-draft-app-production.up.railway.app');
 const theme = createTheme({ palette: { mode: 'light' } });
 
-// Total rounds for manual assignment and live draft
-const TOTAL_ROUNDS = 21;
+const [maxPlayers, setMaxPlayers] = useState(6);
+
+const TOTAL_ROUNDS = 2;
 // Pastel colors for manager columns
 const pastelColors = ['#f8d7da', '#d1ecf1', '#d4edda', '#fff3cd', '#e2dfff', '#f0f0f0'];
 
@@ -128,13 +129,12 @@ export default function App() {
   }, []);
 
   // Join room
-  // AFTER
   const joinRoom = () => {
     if (!roomCode || !nickname) return;
     console.log('➤ joinRoom()', roomCode.toUpperCase(), nickname);
     socket.emit(
       'joinRoom',
-      { code: roomCode.toUpperCase(), nickname },
+      { code: roomCode.toUpperCase(), nickname, maxPlayers},
       ({ success, error }) => {
         console.log('⬅️ joinRoom callback', success, error);
         if (success) {
@@ -189,6 +189,20 @@ export default function App() {
       <Container sx={{ mt: 4 }}>
         {!joined ? (
           <Box display="flex" gap={2} alignItems="center">
+            <TextField
+              label="Max Players"
+              type="number"
+              value={maxPlayers}
+              onChange={e => setMaxPlayers(Number(e.target.value))}
+              helperText="How many drafters?"
+              slotProps={{
+                input: {
+                  // these go straight onto the <input> element
+                  min: 4,
+                  max: 32
+                }
+              }}
+            />
             <TextField
               label="Room Code"
               value={roomCode}

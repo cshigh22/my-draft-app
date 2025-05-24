@@ -1,6 +1,5 @@
 // src/App.js
-socket.on('connect', () => console.log('🟢 WS connected, socket id =', socket.id));
-socket.on('connect_error', (err) => console.error('🔴 WS connection error:', err));
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { io } from 'socket.io-client';
 import {
@@ -30,9 +29,11 @@ import {
 } from '@mui/material';
 
 // initialize socket to your deployed Railway backend
-const socket = io('https://my-draft-app-production.up.railway.app', {
-  transports: ['websocket']
-});
+const SOCKET_HOST = 'wss://switchyard.proxy.rlwy.net:55917'
+const socket      = io(SOCKET_HOST, {
+  transports: ['websocket'],   // force true WebSockets
+  path: '/socket.io'           // default, but explicit can't hurt
+})
 
 const theme = createTheme({ palette: { mode: 'light' } });
 

@@ -72,11 +72,26 @@ io.on('connection', socket => {
     try {
       const roomCode = code.toUpperCase();
       let room = await Room.findOne({ code: roomCode });
+
+      // If the room doesn't exist yet, create it with the given maxPlayers
       if (!room) {
-        room = await Room.create({ code: roomCode, players: [], maxPlayers: maxPlayers ?? undefined});
+        room = await Room.create({
+          code:       roomCode,
+          players:    [],
+          maxPlayers: maxPlayers ?? undefined
+        });
       }
 
-      // Re‑bind existing nickname or add new one
+      // Enforce the player limit on fresh joins before the draft starts
+      const isNew = !room.players.some(p => p.nickname === nickname);
+      if (isNew && !room.started && room.players.length >= room.maxPlayers) {
+        return ack({
+          success: false,
+          error: `Room is full (max ${room.maxPlayers} players).`
+        });
+      }
+
+      // Re‑bind an existing nickname or add a new one
       const existing = room.players.find(p => p.nickname === nickname);
       if (existing) {
         const oldId = existing.id;
@@ -93,10 +108,10 @@ io.on('connection', socket => {
       await room.save();
       socket.join(roomCode);
 
-      // broadcast updated lobby
+      // Broadcast updated lobby
       io.to(roomCode).emit('updateLobby', room.players.map(p => p.nickname));
 
-      // replay draft state if already started
+      // If the draft is already in progress, replay its state to this socket
       if (room.started) {
         socket.emit('draftStarted', {
           draftOrderNicknames: room.draftOrderNicknames,
@@ -107,8 +122,8 @@ io.on('connection', socket => {
           picks:            room.picks,
           availablePlayers: room.availablePlayers,
           nextPicker:       room.draftOrderSocketIds[
-            room.picks.findIndex(p => p === null)
-          ]
+                              room.picks.findIndex(p => p === null)
+                            ]
         });
       }
 
@@ -118,6 +133,7 @@ io.on('connection', socket => {
       ack({ success: false, error: 'Server error during join' });
     }
   });
+
 
   socket.on('startDraft', async ({ code, draftOrder }) => {
     const roomCode = code.toUpperCase();

@@ -1,5 +1,5 @@
 // index.js
-require('dotenv').config();
+require('dotenv').config();                              // Load .env first
 const express    = require('express');
 const http       = require('http');
 const cors       = require('cors');
@@ -38,6 +38,7 @@ const roomSchema = new mongoose.Schema({
 roomSchema.add({
   finishedAt: { type: Date, default: null }
 });
+// Documents expire 1 day after finishedAt
 roomSchema.index({ finishedAt: 1 }, { expireAfterSeconds: 86400 });
 const Room = mongoose.model('Room', roomSchema);
 
@@ -48,15 +49,17 @@ const { data: players } = Papa.parse(csv, { header: true });
 console.log(`✅ Loaded ${players.length} players`);
 
 // ─── Express & Socket.IO Setup ───────────────────────────────────────────────
-const app    = express();
-app.use(cors({ origin: ['https://keeper-fawn.vercel.app'] }));
+const app = express();
+
+// Allow all origins (or replace '*' with your exact Vercel URL if you prefer)
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 const server = http.createServer(app);
 const io     = new Server(server, {
   cors: {
-    origin: ['https://keeper-fawn.vercel.app/'],
-    methods: ['GET', 'POST']
+    origin: '*',           // or ['https://keeper-fawn.vercel.app']
+    methods: ['GET','POST']
   }
 });
 
@@ -69,26 +72,20 @@ io.on('connection', socket => {
       const roomCode = code.toUpperCase();
       let room = await Room.findOne({ code: roomCode });
       if (!room) {
-        // create new room if it doesn't exist
         room = await Room.create({ code: roomCode, players: [] });
       }
 
-      // Check if nickname already exists in room
+      // Re‑bind existing nickname or add new one
       const existing = room.players.find(p => p.nickname === nickname);
       if (existing) {
-        // Re-bind this socket to the existing nickname
         const oldId = existing.id;
         existing.id = socket.id;
-
-        // Also update draftOrderSocketIds if draft already started
         if (room.started) {
           room.draftOrderSocketIds = room.draftOrderSocketIds.map(id =>
             id === oldId ? socket.id : id
           );
         }
-
       } else {
-        // First time joining with this nickname
         room.players.push({ id: socket.id, nickname });
       }
 
@@ -98,7 +95,7 @@ io.on('connection', socket => {
       // broadcast updated lobby
       io.to(roomCode).emit('updateLobby', room.players.map(p => p.nickname));
 
-      // if draft already started, replay state to this socket
+      // replay draft state if already started
       if (room.started) {
         socket.emit('draftStarted', {
           draftOrderNicknames: room.draftOrderNicknames,
@@ -114,7 +111,6 @@ io.on('connection', socket => {
         });
       }
 
-      // finally ack success
       ack({ success: true });
     } catch (err) {
       console.error('❌ joinRoom error', err);
@@ -150,6 +146,7 @@ io.on('connection', socket => {
     const room = await Room.findOne({ code: code.toUpperCase() });
     if (!room || room.picks[pickIndex]) return;
 
+    // store full player object for coloring later
     const playerObj = room.availablePlayers.find(p => p['PLAYER NAME'] === playerName);
     room.picks[pickIndex] = { ...playerObj, socketId: socket.id };
 
@@ -178,7 +175,7 @@ io.on('connection', socket => {
   socket.on('disconnect', () => console.log('❌', socket.id, 'disconnected'));
 });
 
-// ─── Simple REST for room introspection & deletion ─────────────────────────
+// ─── REST Endpoints ──────────────────────────────────────────────────────────
 app.get('/room/:code', async (req, res) => {
   const room = await Room.findOne({ code: req.params.code.toUpperCase() });
   if (!room) return res.status(404).json({ error: 'Room not found' });

@@ -84,7 +84,7 @@ io.on('connection', socket => {
 
       // Enforce the player limit on fresh joins before the draft starts
       const isNew = !room.players.some(p => p.nickname === nickname);
-      if (isNew && !room.started && room.players.length >= room.maxPlayers) {
+      if (isNew && room.players.length >= room.maxPlayers) {
         return ack({
           success: false,
           error: `Room is full (max ${room.maxPlayers} players).`

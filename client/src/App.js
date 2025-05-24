@@ -30,7 +30,7 @@ import {
 const socket = io('https://my-draft-app-production.up.railway.app');
 const theme = createTheme({ palette: { mode: 'light' } });
 
-const TOTAL_ROUNDS = 2;
+const TOTAL_ROUNDS = 21;
 // Pastel colors for manager columns
 const pastelColors = ['#f8d7da', '#d1ecf1', '#d4edda', '#fff3cd', '#e2dfff', '#f0f0f0'];
 

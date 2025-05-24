@@ -68,7 +68,7 @@ const io     = new Server(server, {
 io.on('connection', socket => {
   console.log('🔌', socket.id, 'connected');
 
-  socket.on('joinRoom', async ({ code, nickname }, ack) => {
+  socket.on('joinRoom', async ({ code, nickname, maxPlayers }, ack) => {
     try {
       const roomCode = code.toUpperCase();
       let room = await Room.findOne({ code: roomCode });

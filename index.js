@@ -1,5 +1,5 @@
 // index.js
-require('dotenv').config();                              // Load .env first
+require('dotenv').config();
 const express    = require('express');
 const http       = require('http');
 const cors       = require('cors');
@@ -35,14 +35,10 @@ const roomSchema = new mongoose.Schema({
   numRounds:           Number,
   started:             { type: Boolean, default: false }
 });
-
-// Add finishedAt for TTL expiration
 roomSchema.add({
   finishedAt: { type: Date, default: null }
 });
-// Documents expire 1 hour after finishedAt
 roomSchema.index({ finishedAt: 1 }, { expireAfterSeconds: 86400 });
-
 const Room = mongoose.model('Room', roomSchema);
 
 // ─── Load Players CSV ─────────────────────────────────────────────────────────
@@ -53,13 +49,13 @@ console.log(`✅ Loaded ${players.length} players`);
 
 // ─── Express & Socket.IO Setup ───────────────────────────────────────────────
 const app    = express();
-app.use(cors({ origin: ['https://keeper-fawn.vercel.app/'] }));
+app.use(cors({ origin: ['https://keeper-fawn.vercel.app'] }));
 app.use(express.json());
 
 const server = http.createServer(app);
 const io     = new Server(server, {
   cors: {
-    origin: ['https://keeper-fawn.vercel.app'],
+    origin: ['https://keeper-fawn.vercel.app/'],
     methods: ['GET', 'POST']
   }
 });
@@ -68,32 +64,31 @@ const io     = new Server(server, {
 io.on('connection', socket => {
   console.log('🔌', socket.id, 'connected');
 
-  // ─── Join Room with ACK & Rejoin Logic ────────────────────────────────
   socket.on('joinRoom', async ({ code, nickname }, ack) => {
     try {
       const roomCode = code.toUpperCase();
       let room = await Room.findOne({ code: roomCode });
       if (!room) {
+        // create new room if it doesn't exist
         room = await Room.create({ code: roomCode, players: [] });
       }
 
-      // if draft has started, only allow existing nicknames to rejoin
-      if (room.started) {
-        const existing = room.players.find(p => p.nickname === nickname);
-        if (!existing) {
-          return ack({ success: false, error: 'Draft in progress—only existing managers may re‑join.' });
-        }
-        // update their socket.id in the order array too
+      // Check if nickname already exists in room
+      const existing = room.players.find(p => p.nickname === nickname);
+      if (existing) {
+        // Re-bind this socket to the existing nickname
         const oldId = existing.id;
         existing.id = socket.id;
-        room.draftOrderSocketIds = room.draftOrderSocketIds.map(id =>
-          id === oldId ? socket.id : id
-        );
-      } else {
-        // before start, prevent duplicate nicknames
-        if (room.players.some(p => p.nickname === nickname)) {
-          return ack({ success: false, error: 'Nickname already taken in this room.' });
+
+        // Also update draftOrderSocketIds if draft already started
+        if (room.started) {
+          room.draftOrderSocketIds = room.draftOrderSocketIds.map(id =>
+            id === oldId ? socket.id : id
+          );
         }
+
+      } else {
+        // First time joining with this nickname
         room.players.push({ id: socket.id, nickname });
       }
 
@@ -114,8 +109,8 @@ io.on('connection', socket => {
           picks:            room.picks,
           availablePlayers: room.availablePlayers,
           nextPicker:       room.draftOrderSocketIds[
-                               room.picks.findIndex(p => p === null)
-                             ]
+            room.picks.findIndex(p => p === null)
+          ]
         });
       }
 
@@ -127,7 +122,6 @@ io.on('connection', socket => {
     }
   });
 
-  // ─── Start Draft ────────────────────────────────────────────────────────
   socket.on('startDraft', async ({ code, draftOrder }) => {
     const roomCode = code.toUpperCase();
     const room = await Room.findOne({ code: roomCode });
@@ -152,7 +146,6 @@ io.on('connection', socket => {
     console.log(`🚀 Draft started in room ${roomCode}`);
   });
 
-  // ─── Make Pick ───────────────────────────────────────────────────────────
   socket.on('makePick', async ({ code, playerName, pickIndex }) => {
     const room = await Room.findOne({ code: code.toUpperCase() });
     if (!room || room.picks[pickIndex]) return;
@@ -197,6 +190,7 @@ app.get('/room/:code', async (req, res) => {
     availablePlayers:    room.availablePlayers
   });
 });
+
 app.delete('/room/:code', async (req, res) => {
   const result = await Room.deleteOne({ code: req.params.code.toUpperCase() });
   if (!result.deletedCount) return res.status(404).json({ error: 'Room not found' });
@@ -206,7 +200,6 @@ app.delete('/room/:code', async (req, res) => {
 // ─── Healthcheck & Server Start ─────────────────────────────────────────────
 app.get('/', (req, res) => res.send('🏈 Draft Server Running'));
 const PORT = process.env.PORT || 3001;
-// Start the same `server` that io is attached to:
 server.listen(PORT, () =>
   console.log(`🌐 Listening on port ${PORT}`)
 );

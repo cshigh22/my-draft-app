@@ -107,7 +107,10 @@ export default function App() {
       setNextPicker(nextPicker);
     });
 
-    socket.on('draftEnded', () => setDraftEnded(true));
+    socket.on('draftEnded', ({ finalPicks }) => {
+      setPicks(finalPicks);      // <-- update picks one last time
+      setDraftEnded(true);
+    });
 
     // Listen for join errors once draft started
     socket.on('joinError', ({ message }) => {

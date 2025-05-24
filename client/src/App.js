@@ -30,8 +30,6 @@ import {
 const socket = io('https://my-draft-app-production.up.railway.app');
 const theme = createTheme({ palette: { mode: 'light' } });
 
-const [maxPlayers, setMaxPlayers] = useState(6);
-
 const TOTAL_ROUNDS = 2;
 // Pastel colors for manager columns
 const pastelColors = ['#f8d7da', '#d1ecf1', '#d4edda', '#fff3cd', '#e2dfff', '#f0f0f0'];
@@ -53,6 +51,7 @@ export default function App() {
   const [playerList, setPlayerList] = useState([]);
   const [assigning, setAssigning] = useState(false);
   const [manualDraftOrder, setManualDraftOrder] = useState([]);
+  const [maxPlayers, setMaxPlayers] = useState(6);
 
   // Draft state
   const [draftStarted, setDraftStarted] = useState(false);

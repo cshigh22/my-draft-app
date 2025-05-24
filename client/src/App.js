@@ -30,6 +30,8 @@ import {
 
 // initialize socket to your deployed Railway backend
 const socket = io('https://my-draft-app-production.up.railway.app');
+socket.on('connect', () => console.log('🟢 socket connected →', socket.id));
+socket.on('connect_error', (err) => console.error('🔴 connection error', err));
 
 const theme = createTheme({ palette: { mode: 'light' } });
 

@@ -53,9 +53,16 @@ console.log(`✅ Loaded ${players.length} players`);
 
 // ─── Express & Socket.IO Setup ───────────────────────────────────────────────
 const app    = express();
-app.use(cors());
+app.use(cors({ origin: ['https://keeper-fawn.vercel.app/'] }));
+app.use(express.json());
+
 const server = http.createServer(app);
-const io     = new Server(server, { cors: { origin: '*' } });
+const io     = new Server(server, {
+  cors: {
+    origin: ['https://keeper-fawn.vercel.app'],
+    methods: ['GET', 'POST']
+  }
+});
 
 // ─── Socket.IO Handlers ──────────────────────────────────────────────────────
 io.on('connection', socket => {
@@ -150,12 +157,13 @@ io.on('connection', socket => {
     const room = await Room.findOne({ code: code.toUpperCase() });
     if (!room || room.picks[pickIndex]) return;
 
-    room.picks[pickIndex] = { socketId: socket.id, playerName };
+    const playerObj = room.availablePlayers.find(p => p['PLAYER NAME'] === playerName);
+    room.picks[pickIndex] = { ...playerObj, socketId: socket.id };
+
     room.availablePlayers = room.availablePlayers.filter(
       p => p['PLAYER NAME'] !== playerName
     );
 
-    // if complete, mark TTL
     if (room.picks.every(p => p !== null)) {
       room.finishedAt = new Date();
       await room.save();
@@ -165,7 +173,7 @@ io.on('connection', socket => {
     }
 
     await room.save();
-    const nextIdx   = room.picks.findIndex(p => p === null);
+    const nextIdx    = room.picks.findIndex(p => p === null);
     const nextSocket = room.draftOrderSocketIds[nextIdx];
     io.to(room.code).emit('updateDraft', {
       picks:            room.picks,
@@ -178,7 +186,6 @@ io.on('connection', socket => {
 });
 
 // ─── Simple REST for room introspection & deletion ─────────────────────────
-app.use(express.json());
 app.get('/room/:code', async (req, res) => {
   const room = await Room.findOne({ code: req.params.code.toUpperCase() });
   if (!room) return res.status(404).json({ error: 'Room not found' });
@@ -199,6 +206,7 @@ app.delete('/room/:code', async (req, res) => {
 // ─── Healthcheck & Server Start ─────────────────────────────────────────────
 app.get('/', (req, res) => res.send('🏈 Draft Server Running'));
 const PORT = process.env.PORT || 3001;
-http.createServer(app).listen(PORT, () =>
+// Start the same `server` that io is attached to:
+server.listen(PORT, () =>
   console.log(`🌐 Listening on port ${PORT}`)
 );

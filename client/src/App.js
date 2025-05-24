@@ -1,5 +1,6 @@
 // src/App.js
-
+socket.on('connect', () => console.log('🟢 WS connected, socket id =', socket.id));
+socket.on('connect_error', (err) => console.error('🔴 WS connection error:', err));
 import React, { useState, useEffect, useMemo } from 'react';
 import { io } from 'socket.io-client';
 import {

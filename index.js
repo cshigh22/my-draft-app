@@ -61,52 +61,70 @@ const io     = new Server(server, { cors: { origin: '*' } });
 io.on('connection', socket => {
   console.log('🔌', socket.id, 'connected');
 
-  socket.on('joinRoom', async ({ code, nickname }) => {
-    let room = await Room.findOne({ code });
-    if (!room) room = await Room.create({ code, players: [] });
-
-    // Only allow existing players after start
-    if (room.started) {
-      const existing = room.players.find(p => p.nickname === nickname);
-      if (!existing) {
-        return socket.emit('joinError', { message: 'Draft in progress—only existing managers may re‑join.' });
+  // ─── Join Room with ACK & Rejoin Logic ────────────────────────────────
+  socket.on('joinRoom', async ({ code, nickname }, ack) => {
+    try {
+      const roomCode = code.toUpperCase();
+      let room = await Room.findOne({ code: roomCode });
+      if (!room) {
+        room = await Room.create({ code: roomCode, players: [] });
       }
-    }
 
-    // Update or add player
-    const existingPlayer = room.players.find(p => p.nickname === nickname);
-    if (existingPlayer) {
-      const oldId = existingPlayer.id;
-      existingPlayer.id = socket.id;
+      // if draft has started, only allow existing nicknames to rejoin
       if (room.started) {
-        room.draftOrderSocketIds = room.draftOrderSocketIds.map(id => id === oldId ? socket.id : id);
+        const existing = room.players.find(p => p.nickname === nickname);
+        if (!existing) {
+          return ack({ success: false, error: 'Draft in progress—only existing managers may re‑join.' });
+        }
+        // update their socket.id in the order array too
+        const oldId = existing.id;
+        existing.id = socket.id;
+        room.draftOrderSocketIds = room.draftOrderSocketIds.map(id =>
+          id === oldId ? socket.id : id
+        );
+      } else {
+        // before start, prevent duplicate nicknames
+        if (room.players.some(p => p.nickname === nickname)) {
+          return ack({ success: false, error: 'Nickname already taken in this room.' });
+        }
+        room.players.push({ id: socket.id, nickname });
       }
-    } else {
-      room.players.push({ id: socket.id, nickname });
-    }
-    await room.save();
 
-    socket.join(code);
-    io.to(code).emit('updateLobby', room.players.map(p => p.nickname));
+      await room.save();
+      socket.join(roomCode);
 
-    if (room.started) {
-      // Replay draft state
-      socket.emit('draftStarted', {
-        draftOrderNicknames: room.draftOrderNicknames,
-        draftOrderSocketIds: room.draftOrderSocketIds,
-        playersPool:         room.availablePlayers
-      });
-      socket.emit('updateDraft', {
-        picks:            room.picks,
-        availablePlayers: room.availablePlayers,
-        nextPicker:       room.draftOrderSocketIds[room.picks.findIndex(p => p === null)]
-      });
+      // broadcast updated lobby
+      io.to(roomCode).emit('updateLobby', room.players.map(p => p.nickname));
+
+      // if draft already started, replay state to this socket
+      if (room.started) {
+        socket.emit('draftStarted', {
+          draftOrderNicknames: room.draftOrderNicknames,
+          draftOrderSocketIds: room.draftOrderSocketIds,
+          playersPool:         room.availablePlayers
+        });
+        socket.emit('updateDraft', {
+          picks:            room.picks,
+          availablePlayers: room.availablePlayers,
+          nextPicker:       room.draftOrderSocketIds[
+                               room.picks.findIndex(p => p === null)
+                             ]
+        });
+      }
+
+      // finally ack success
+      ack({ success: true });
+    } catch (err) {
+      console.error('❌ joinRoom error', err);
+      ack({ success: false, error: 'Server error during join' });
     }
   });
 
+  // ─── Start Draft ────────────────────────────────────────────────────────
   socket.on('startDraft', async ({ code, draftOrder }) => {
-    const room = await Room.findOne({ code });
-    if (!room) return;
+    const roomCode = code.toUpperCase();
+    const room = await Room.findOne({ code: roomCode });
+    if (!room) return console.error('❌ startDraft: invalid room');
 
     const nameToId = Object.fromEntries(room.players.map(p => [p.nickname, p.id]));
     const flatIds  = draftOrder.map(n => nameToId[n]);
@@ -119,47 +137,50 @@ io.on('connection', socket => {
     room.started             = true;
     await room.save();
 
-    io.to(code).emit('draftStarted', {
+    io.to(roomCode).emit('draftStarted', {
       draftOrderNicknames: room.draftOrderNicknames,
       draftOrderSocketIds: room.draftOrderSocketIds,
       playersPool:         room.availablePlayers
     });
-    console.log(`🚀 Draft started in room ${code}: ${room.players.length} managers × ${room.numRounds} rounds`);
+    console.log(`🚀 Draft started in room ${roomCode}`);
   });
 
+  // ─── Make Pick ───────────────────────────────────────────────────────────
   socket.on('makePick', async ({ code, playerName, pickIndex }) => {
-    const room = await Room.findOne({ code });
+    const room = await Room.findOne({ code: code.toUpperCase() });
     if (!room || room.picks[pickIndex]) return;
 
     room.picks[pickIndex] = { socketId: socket.id, playerName };
-    room.availablePlayers = room.availablePlayers.filter(p => p['PLAYER NAME'] !== playerName);
+    room.availablePlayers = room.availablePlayers.filter(
+      p => p['PLAYER NAME'] !== playerName
+    );
 
-    // If draft complete, set finishedAt for TTL deletion
+    // if complete, mark TTL
     if (room.picks.every(p => p !== null)) {
       room.finishedAt = new Date();
       await room.save();
-      io.to(code).emit('draftEnded', { finalPicks: room.picks });
-      console.log(`🏁 Draft ended in room ${code}`);
+      io.to(room.code).emit('draftEnded', { finalPicks: room.picks });
+      console.log(`🏁 Draft ended in room ${room.code}`);
       return;
     }
 
     await room.save();
-
     const nextIdx   = room.picks.findIndex(p => p === null);
-    const nextPicker = nextIdx === -1 ? null : room.draftOrderSocketIds[nextIdx];
-    io.to(code).emit('updateDraft', {
+    const nextSocket = room.draftOrderSocketIds[nextIdx];
+    io.to(room.code).emit('updateDraft', {
       picks:            room.picks,
       availablePlayers: room.availablePlayers,
-      nextPicker
+      nextPicker:       nextSocket
     });
   });
 
   socket.on('disconnect', () => console.log('❌', socket.id, 'disconnected'));
 });
 
-// ─── REST Endpoints ─────────────────────────────────────────────────────────
+// ─── Simple REST for room introspection & deletion ─────────────────────────
+app.use(express.json());
 app.get('/room/:code', async (req, res) => {
-  const room = await Room.findOne({ code: req.params.code });
+  const room = await Room.findOne({ code: req.params.code.toUpperCase() });
   if (!room) return res.status(404).json({ error: 'Room not found' });
   res.json({
     players:             room.players.map(p => p.nickname),
@@ -169,19 +190,15 @@ app.get('/room/:code', async (req, res) => {
     availablePlayers:    room.availablePlayers
   });
 });
-
-// Manual delete endpoint
 app.delete('/room/:code', async (req, res) => {
-  const result = await Room.deleteOne({ code: req.params.code });
-  if (result.deletedCount === 0) {
-    return res.status(404).json({ error: 'Room not found' });
-  }
+  const result = await Room.deleteOne({ code: req.params.code.toUpperCase() });
+  if (!result.deletedCount) return res.status(404).json({ error: 'Room not found' });
   res.json({ success: true });
 });
 
-// Health check
+// ─── Healthcheck & Server Start ─────────────────────────────────────────────
 app.get('/', (req, res) => res.send('🏈 Draft Server Running'));
-
-// Start server
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => console.log(`🌐 Listening on port ${PORT}`));
+http.createServer(app).listen(PORT, () =>
+  console.log(`🌐 Listening on port ${PORT}`)
+);

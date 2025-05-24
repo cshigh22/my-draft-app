@@ -261,7 +261,7 @@ export default function App() {
             <Box>
               <Typography variant="h5">Players in Lobby</Typography>
               <List>{playerList.map(p => <ListItem key={p}><ListItemText primary={p} /></ListItem>)}</List>
-              {playerList.length === 6 && playerList[0] === nickname && (
+              {playerList.length === maxPlayers && playerList[0] === nickname && (
                 <Button variant="contained" onClick={startAssignment}>Start Manual Draft</Button>
               )}
             </Box>

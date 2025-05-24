@@ -306,7 +306,7 @@ export default function App() {
                             const bg = slotOwner ? getColor(slotOwner) : '#fff';
                             return (
                               <TableCell key={`${c}-${r}`} sx={{ backgroundColor: bg, minWidth: 120 }}>
-                                {picks[slotIdx]?.playerName || '-'}
+                                {picks[slotIdx]?.playerName || picks[slotIdx]?.['PLAYER NAME']}
                               </TableCell>
                             );
                           })}

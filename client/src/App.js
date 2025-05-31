@@ -193,7 +193,6 @@ export default function App() {
               type="number"
               value={maxPlayers}
               onChange={e => setMaxPlayers(Number(e.target.value))}
-              helperText="How many drafters?"
               slotProps={{
                 input: {
                   // these go straight onto the <input> element
